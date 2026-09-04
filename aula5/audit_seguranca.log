@@ -1,0 +1,55 @@
+=== INICIO DA AUDITORIA DE SEGURANCA: Sat Aug  8 01:32:54 AM UTC 2026 ===
+
+--- [1/3] Tentativa Sem API Key #1 (GET /api/v1/motoristas) ---
+HTTP/1.1 401 Unauthorized
+X-Powered-By: Express
+Access-Control-Allow-Origin: *
+Content-Type: application/json; charset=utf-8
+Content-Length: 73
+ETag: W/"49-VocKX6oX/pI0y+4oQzHnxXXilzU"
+Date: Sat, 08 Aug 2026 01:32:54 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+{"erro":"Acesso nao autorizado. Header 'X-API-KEY' invalido ou ausente."}
+
+--- [2/3] Tentativa Sem API Key #2 (GET /api/v1/manutencoes) ---
+HTTP/1.1 401 Unauthorized
+X-Powered-By: Express
+Access-Control-Allow-Origin: *
+Content-Type: application/json; charset=utf-8
+Content-Length: 73
+ETag: W/"49-VocKX6oX/pI0y+4oQzHnxXXilzU"
+Date: Sat, 08 Aug 2026 01:32:54 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+{"erro":"Acesso nao autorizado. Header 'X-API-KEY' invalido ou ausente."}
+
+--- [3/3] Tentativa Sem API Key #3 (POST /api/v1/manutencoes) ---
+HTTP/1.1 401 Unauthorized
+X-Powered-By: Express
+Access-Control-Allow-Origin: *
+Content-Type: application/json; charset=utf-8
+Content-Length: 73
+ETag: W/"49-VocKX6oX/pI0y+4oQzHnxXXilzU"
+Date: Sat, 08 Aug 2026 01:32:54 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+{"erro":"Acesso nao autorizado. Header 'X-API-KEY' invalido ou ausente."}
+
+--- [4/4] Tentativa Com API Key Valida (GET /api/v1/manutencoes) ---
+HTTP/1.1 200 OK
+X-Powered-By: Express
+Access-Control-Allow-Origin: *
+Content-Type: application/json; charset=utf-8
+Content-Length: 223
+ETag: W/"df-T6VkpRqxQR4qfhMp8DLMkJ7xS2s"
+Date: Sat, 08 Aug 2026 01:32:54 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+[{"id":1,"caminhao":"Volvo FH 540","descricao":"Troca de oleo e filtros","valor":1500,"status":"Aprovado"},{"id":2,"caminhao":"Scania R450","descricao":"Substituicao de pastilhas de freio","valor":2800,"status":"Pendente"}]
+
+=== FIM DA AUDITORIA DE SEGURANCA ===
