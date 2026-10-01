@@ -1,20 +1,26 @@
 require('dotenv').config();
 const express = require('express');
 const app = express();
-const PORT = process.env.PORT || 3002;
+const PORT = process.env.PORT || 3025;
 
 app.use(express.json());
 
 app.get('/api/v1/versao', (req, res) => {
   res.json({
-    aplicacao: "API Binário Tech - CI/CD Pipeline",
-    versao: "1.0.0",
-    ambiente: "Servidor de Homologação Local",
-    uptime: process.uptime(),
+    versao: "1.0.1",
+    status: "online",
     timestamp: new Date()
   });
 });
 
+app.get('/api/v1/proxy/info', (req, res) => {
+  res.json({
+    status: "SUCESSO",
+    mensagem: "Aplicação CI/CD ativa!",
+    porta: PORT
+  });
+});
+
 app.listen(PORT, () => {
-  console.log(`[Binário Tech] Aplicação CI/CD ativa na porta ${PORT}`);
+  console.log(`[Binário Tech] Aplicação rodando na porta ${PORT}`);
 });
