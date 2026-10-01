@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { MongoMemoryServer } = require('mongodb-memory-server');
 require('dotenv').config();
 
 const app = express();
@@ -13,10 +14,21 @@ const User = mongoose.model('User', new mongoose.Schema({
   senha: { type: String, required: true }
 }));
 
-// Conexão com o Banco
-mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/binario_tech_prova');
+// Conexão dinâmica com MongoDB
+async function connectDB() {
+  try {
+    await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 2000 });
+    console.log('Conectado ao MongoDB local!');
+  } catch (err) {
+    console.log('Iniciando MongoDB em memória para testes...');
+    const mongod = await MongoMemoryServer.create();
+    await mongoose.connect(mongod.getUri());
+    console.log('Conectado ao MongoDB em memória com sucesso!');
+  }
+}
+connectDB();
 
-// Q1: Registro (Post /register)
+// Q1: Registro
 app.post('/api/v1/prova/register', async (req, res) => {
   const { email, senha } = req.body;
   if (!email || !senha || senha.length < 6) {
@@ -27,7 +39,7 @@ app.post('/api/v1/prova/register', async (req, res) => {
   res.status(201).json({ id: user._id, email: user.email });
 });
 
-// Q2: Login (Post /login)
+// Q2: Login
 app.post('/api/v1/prova/login', async (req, res) => {
   const { email, senha } = req.body;
   const user = await User.findOne({ email });
@@ -38,7 +50,7 @@ app.post('/api/v1/prova/login', async (req, res) => {
   res.json({ token });
 });
 
-// Q3: Middleware e Rota Protegida (Get /relatorio)
+// Q3: Middleware e Rota Protegida
 const validarJWT = (req, res, next) => {
   const auth = req.headers.authorization;
   if (!auth) return res.status(401).json({ error: 'Token ausente' });
