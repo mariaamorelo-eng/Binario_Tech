@@ -1,1 +1,10 @@
-{"montadora":"Mercedes-Benz","modelo":"Actros","status":"OK","conexao":true,"velocidade_media":78}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Error</title>
+</head>
+<body>
+<pre>Cannot GET /api/v1/mercedes</pre>
+</body>
+</html>
