@@ -1,0 +1,92 @@
+=== INÍCIO DOS TESTES CRUD - Fri Aug  7 02:09:52 AM UTC 2026 ===
+
+1. Cadastrando o primeiro veículo...
+HTTP/1.1 404 Not Found
+X-Powered-By: Express
+Content-Security-Policy: default-src 'none'
+X-Content-Type-Options: nosniff
+Content-Type: text/html; charset=utf-8
+Content-Length: 155
+Date: Fri, 07 Aug 2026 02:09:52 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Error</title>
+</head>
+<body>
+<pre>Cannot POST /api/v1/veiculos</pre>
+</body>
+</html>
+
+
+---------------------------------------
+
+2. Cadastrando o segundo veículo...
+HTTP/1.1 404 Not Found
+X-Powered-By: Express
+Content-Security-Policy: default-src 'none'
+X-Content-Type-Options: nosniff
+Content-Type: text/html; charset=utf-8
+Content-Length: 155
+Date: Fri, 07 Aug 2026 02:09:52 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Error</title>
+</head>
+<body>
+<pre>Cannot POST /api/v1/veiculos</pre>
+</body>
+</html>
+
+
+---------------------------------------
+
+3. Atualizando o veículo de ID 1 (Status para EM_ROTA)...
+HTTP/1.1 404 Not Found
+X-Powered-By: Express
+Content-Security-Policy: default-src 'none'
+X-Content-Type-Options: nosniff
+Content-Type: text/html; charset=utf-8
+Content-Length: 158
+Date: Fri, 07 Aug 2026 02:09:52 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Error</title>
+</head>
+<body>
+<pre>Cannot PATCH /api/v1/veiculos/1</pre>
+</body>
+</html>
+
+
+---------------------------------------
+
+4. Deletando o veículo de ID 2...
+HTTP/1.1 404 Not Found
+X-Powered-By: Express
+Content-Type: application/json; charset=utf-8
+Content-Length: 33
+ETag: W/"21-elmrnB74KnbcSod+k6pquFh21Ak"
+Date: Fri, 07 Aug 2026 02:09:52 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+{"erro":"Veiculo nao encontrado"}
+
+---------------------------------------
+
+=== TESTES CONCLUÍDOS ===

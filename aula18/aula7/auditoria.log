@@ -1,0 +1,23 @@
+=== INÍCIO DA AUDITORIA DA API - Fri Aug 21 02:48:46 AM UTC 2026 ===
+
+--------------------------------------------------
+TESTANDO: [GET] http://localhost:3000/api/v1/telemetria/mercedes
+RESPOSTA: {"sucesso":true,"dados":[{"id":1,"modelo":"Actros 2651","tipo":"Pesado","ano":2023,"vin":"9BM936000K12"}]}
+
+--------------------------------------------------
+TESTANDO: [POST] http://localhost:3000/api/v1/telemetria/mercedes
+RESPOSTA: {"sucesso":false,"mensagem":"Validação falhou: VIN deve ter exatamente 12 caracteres."}
+
+--------------------------------------------------
+TESTANDO: [POST] http://localhost:3000/api/v1/telemetria/mercedes
+RESPOSTA: {"sucesso":true,"dados":{"id":2,"modelo":"Actros Teste","tipo":"Pesado","ano":2024,"vin":"9BM936000K12"}}
+
+--------------------------------------------------
+TESTANDO: [POST] http://localhost:3000/api/v1/telemetria/scania
+RESPOSTA: {"sucesso":false,"mensagem":"Validação falhou: VIN deve ter exatamente 12 caracteres."}
+
+--------------------------------------------------
+TESTANDO: [POST] http://localhost:3000/api/v1/telemetria/scania
+RESPOSTA: {"sucesso":true,"dados":{"id":1,"modelo":"Scania Teste","tipo":"Pesado","ano":2024,"vin":"9BM936000K99"}}
+
+=== FIM DA AUDITORIA ===
