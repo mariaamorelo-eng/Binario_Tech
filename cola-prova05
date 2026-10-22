@@ -1,0 +1,732 @@
+NOME: Maria Eduarda Morelo  Nº 26  T1DEV-T5
+22/10/2026 - PBE1 
+------------------------------------------------------------------------
+# GUIA COMPLETO DE ESTUDO E EXECUÇÃO: PROVA PRÁTICA BACK-END (AULA 05) #
+------------------------------------------------------------------------
+
+## 1. RESUMO TEÓRICO DA AULA
+### Arquitetura HTTP e Middleware
+Um **Middleware** no Express é uma função que tem acesso aos objetos de Requisição (`req`), Resposta (`res`) e à próxima função middleware no ciclo de vida da aplicação (`next`).
+
+#### Ciclo de Vida (Pilha de Middlewares)
+1. A requisição chega ao servidor Express.
+2. O servidor passa a requisição através de uma **pilha de middlewares** em ordem de declaração.
+3. Cada middleware pode:
+* Executar qualquer código.
+* Alterar os objetos `req` e `res`.
+* Encerrar o ciclo de requisição-resposta (retornando `res.json()`, `res.send()`, etc.).
+* Chamar `next()` para passar o controle para o próximo middleware.
+
+```text
+[ Requisição ] ──> [ CORS ] ──> [ JSON Parser ] ──> [ Logger ] ──> [ Auth ] ──> [ Rota/Controller ] ──> [ Resposta ]
+                                                                       │
+                                                            (Se falhar) └──> [ Status 401/400 ]
+```
+> **Atenção:** Se um middleware não encerrar o ciclo de requisição e não chamar `next()`, a requisição ficará suspensa e o cliente atingirá um erro de timeout.
+
+### Componentes Principais
+* **`express.Router()`**: Classe utilitária do Express usada para criar manipuladores de rotas modularizados e montáveis. Permite agrupar rotas de um mesmo recurso (ex: `/motoristas`) em um arquivo separado.
+* **Header `X-API-KEY**`: Um cabeçalho HTTP personalizado utilizado para autenticação simples baseada em tokens/chaves estáticas.
+* **CORS (Cross-Origin Resource Sharing)**: Mecanismo de segurança do navegador que bloqueia requisições vindas de origens (domínio/porta) diferentes da API. O middleware `cors()` configura os cabeçalhos apropriados (ex: `Access-Control-Allow-Origin: *`).
+* **Tratamento Global de 404**: Um middleware posicionado **ao final** de todas as declarações de rotas. Caso nenhuma rota anterior case com a URL requisitada, este middleware intercepta e retorna o erro.
+---
+## 2. ESTRUTURA DO PROJETO E ARQUIVOS
+
+```text
+prova_aula05/
+├── package.json
+├── app.js                   <-- Servidor principal (Porta 3025)
+├── teste_seguranca.sh       <-- Script Bash de testes
+├── audit_seguranca.log      <-- Log gerado pelo script
+├── middlewares/             <-- PASTA DE MIDDLEWARES
+│   ├── logger.js            <-- Log de requisições e tempo de resposta
+│   ├── auth.js              <-- Autenticação por X-API-KEY
+│   └── validaCnh.js         <-- Validação de CNH com 11 dígitos
+└── routes/                  <-- PASTA DE ROTAS
+    ├── motoristas.js        <-- Rotas GET e POST de motoristas
+    └── manutencoes.js       <-- Rotas GET e POST de manutenções
+
+```
+---
+## 3. PASSO A PASSO COMPLETO DA APLICAÇÃO
+
+1. **Configuração do Ambiente e Inicialização do Projeto:** Executar diretamente no terminal SSH do servidor Debian.
+Acesse o diretório raiz, crie a estrutura de pastas do projeto e instale as dependências necessárias.
+
+```bash
+# 1. Navegar para a pasta binario_tech
+cd ~/binario_tech
+
+# 2. Criar a pasta da prova e subpastas de arquitetura
+mkdir -p prova_aula05/routes prova_aula05/middlewares
+
+# 3. Entrar na pasta da prova
+cd prova_aula05
+
+# 4. Inicializar o projeto Node.js (cria o package.json padrão)
+npm init -y
+
+# 5. Instalar o Express e o CORS
+npm install express cors
+
+```
+
+2. **Middleware de Logging (middlewares/logger.js):** Registra tempo de resposta, método HTTP e status.
+Crie o arquivo `middlewares/logger.js` para registrar a data/hora, o método HTTP, a URL acessada, o status HTTP retornado e o tempo total de processamento em milissegundos.
+
+```javascript
+const loggerMiddleware = (req, res, next) => {
+    const inicio = Date.now();
+    const timestamp = new Date().toISOString();
+
+    res.on('finish', () => {
+        const duracao = Date.now() - inicio;
+        console.log(`[LOG ${timestamp}] ${req.method} ${req.originalUrl} - Status: ${res.statusCode} (${duracao}ms)`);
+    });
+
+    next();
+};
+
+module.exports = loggerMiddleware;
+
+```
+
+
+3. **Middleware de Autenticação (middlewares/auth.js):** Validação do header X-API-KEY.
+Crie o arquivo `middlewares/auth.js` para proteger as rotas restritas através do cabeçalho HTTP personalizado.
+
+```javascript
+function authMiddleware(req, res, next) {
+    const apiKey = req.headers['x-api-key'];
+    const CHAVE_VALIDA = "binario-tech-secret-2026";
+
+    if (!apiKey || apiKey !== CHAVE_VALIDA) {
+        return res.status(401).json({
+            erro: "Acesso nao autorizado. Header 'X-API-KEY' invalido ou ausente."
+        });
+    }
+
+    next();
+}
+
+module.exports = authMiddleware;
+
+```
+
+
+4. **Middleware de Validação de CNH (middlewares/validaCnh.js):** Validação de payload com exatamente 11 dígitos numéricos.
+Crie o arquivo `middlewares/validaCnh.js` para garantir a integridade dos dados enviados no cadastro de motoristas.
+
+```javascript
+function validaCnhMiddleware(req, res, next) {
+    const { cnh } = req.body;
+    const cnhValida = /^\d{11}$/.test(cnh);
+
+    if (!cnh || !cnhValida) {
+        return res.status(400).json({
+            erro: "Validação falhou. O campo 'cnh' deve conter exatamente 11 dígitos numéricos."
+        });
+    }
+
+    next();
+}
+
+module.exports = validaCnhMiddleware;
+
+```
+
+
+5. **Módulo de Rotas de Motoristas (routes/motoristas.js):** Gerenciamento de motoristas usando express.Router().
+Crie o arquivo `routes/motoristas.js` contendo a base de dados em memória e as rotas GET e POST.
+
+```javascript
+const express = require('express');
+const router = express.Router();
+
+let motoristas = [
+    { id: 1, nome: "Carlos Silva", cnh: "12345678900", categoria: "E", ativo: true },
+    { id: 2, nome: "Ana Pereira", cnh: "98765432100", categoria: "D", ativo: true }
+];
+
+// GET /api/v1/motoristas
+router.get('/', (req, res) => {
+    res.status(200).json(motoristas);
+});
+
+// POST /api/v1/motoristas
+router.post('/', (req, res) => {
+    const { nome, cnh, categoria } = req.body;
+
+    if (!nome || !cnh || !categoria) {
+        return res.status(400).json({ 
+            erro: "Campos 'nome', 'cnh' e 'categoria' sao obrigatorios." 
+        });
+    }
+
+    const novoMotorista = {
+        id: motoristas.length + 1,
+        nome,
+        cnh,
+        categoria,
+        ativo: true
+    };
+
+    motoristas.push(novoMotorista);
+    res.status(201).json(novoMotorista);
+});
+
+module.exports = router;
+
+```
+
+
+6. **Módulo de Rotas de Manutenções (routes/manutencoes.js):** Gerenciamento de manutenções de veículos.
+Crie o arquivo `routes/manutencoes.js` para controle de orçamentos e serviços.
+
+```javascript
+const express = require('express');
+const router = express.Router();
+
+let manutencoes = [
+    { id: 1, veiculo: "Caminhão Volvo FH 540", descricao: "Troca de óleo e filtros", valor: 1500.00, status: "Concluído" },
+    { id: 2, veiculo: "Scania R450", descricao: "Substituição de pastilhas de freio", valor: 2800.00, status: "Pendente" }
+];
+
+// GET /api/v1/manutencoes
+router.get('/', (req, res) => {
+    res.status(200).json(manutencoes);
+});
+
+// POST /api/v1/manutencoes
+router.post('/', (req, res) => {
+    const { veiculo, descricao, valor, status } = req.body;
+
+    if (!veiculo || !descricao || !valor) {
+        return res.status(400).json({ 
+            erro: "Campos 'veiculo', 'descricao' e 'valor' sao obrigatorios." 
+        });
+    }
+
+    const novaManutencao = {
+        id: manutencoes.length + 1,
+        veiculo,
+        descricao,
+        valor: Number(valor),
+        status: status || "Pendente"
+    };
+
+    manutencoes.push(novaManutencao);
+    res.status(201).json(novaManutencao);
+});
+
+module.exports = router;
+
+```
+
+
+7. **Servidor Principal (app.js):** Configurado para rodar na porta 3025.
+Crie o arquivo `app.js` integrando todos os módulos e configurando a ordem da pilha do Express.
+
+```javascript
+const express = require('express');
+const cors = require('cors');
+
+// Importação de Middlewares
+const loggerMiddleware = require('./middlewares/logger');
+const authMiddleware = require('./middlewares/auth');
+const validaCnhMiddleware = require('./middlewares/validaCnh');
+
+// Importação de Roteadores
+const motoristasRouter = require('./routes/motoristas');
+const manutencoesRouter = require('./routes/manutencoes');
+
+const app = express();
+const PORT = 3025; // Porta configurada para 3025
+
+// 1. Middlewares Globais
+app.use(cors());
+app.use(express.json());
+app.use(loggerMiddleware);
+
+// 2. Rota Pública (Health Check)
+app.get('/api/v1/health', (req, res) => {
+    res.status(200).json({ status: "ONLINE", aplicacao: "Binario Tech API v2" });
+});
+
+// 3. Rotas Protegidas
+// Aplicando validaCnhMiddleware exclusivamente na rota POST de motoristas
+app.post('/api/v1/motoristas', authMiddleware, validaCnhMiddleware);
+app.use('/api/v1/motoristas', authMiddleware, motoristasRouter);
+
+app.use('/api/v1/manutencoes', authMiddleware, manutencoesRouter);
+
+// 4. Middleware Global de Tratamento de Rota Não Encontrada (404)
+app.use((req, res) => {
+    res.status(404).json({ erro: "Endpoint nao encontrado no servidor Binario Tech." });
+});
+
+// 5. Inicialização do Servidor
+app.listen(PORT, () => {
+    console.log(`[Binario Tech] Servidor de Middlewares ativo na porta ${PORT}`);
+});
+
+```
+
+
+---
+
+## 4. BATERIA DE EXERCÍCIOS DA AULA 05 & DESAFIOS DA PROVA
+
+### Parte A: Bateria de Exercícios de Fixação (Aula 05)
+
+#### Exercício 01: Teste da Rota Health e Logs
+
+* **Comando:**
+```bash
+curl -s http://localhost:3025/api/v1/health | jq .
+
+```
+
+* **Log Gerado no Terminal (Servidor):**
+`[LOG 2026-10-22T13:00:00.000Z] GET /api/v1/health - Status: 200 (2ms)`
+
+---
+
+#### Exercício 02 & 03: Rota e Roteador de Manutenções (`routes/manutencoes.js`)
+
+Configurado no arquivo `routes/manutencoes.js` e registrado no `app.js` sob a rota `/api/v1/manutencoes` com `authMiddleware`.
+
+---
+
+#### Exercício 04 & 05: Middleware de Validação de CNH e Teste com CNH Inválida
+
+* **Comando de Teste via `curl` (CNH Inválida "123"):**
+```bash
+curl -s -X POST http://localhost:3025/api/v1/motoristas \
+  -H "X-API-KEY: binario-tech-secret-2026" \
+  -H "Content-Type: application/json" \
+  -d '{"nome":"Roberto Souza","cnh":"123","categoria":"E"}' | jq .
+
+```
+
+
+* **Resposta Esperada (HTTP Status 400 Bad Request):**
+```json
+{
+  "erro": "Validação falhou. O campo 'cnh' deve conter exatamente 11 dígitos numéricos."
+}
+
+```
+
+
+
+---
+
+#### Exercício 06: Teste de Rota Inexistente (404)
+
+* **Comando:**
+```bash
+curl -s http://localhost:3025/api/v1/clientes | jq .
+
+```
+
+
+* **Resposta Esperada (HTTP Status 404 Not Found):**
+```json
+{
+  "erro": "Endpoint nao encontrado no servidor Binario Tech."
+}
+
+```
+
+
+
+---
+
+#### Exercício 07: Script Bash de Auditoria de Segurança (`teste_seguranca.sh`)
+
+Crie o arquivo `teste_seguranca.sh`:
+
+```bash
+#!/bin/bash
+
+LOG_FILE="audit_seguranca.log"
+URL="http://localhost:3025"
+KEY="binario-tech-secret-2026"
+
+echo "==========================================" > $LOG_FILE
+echo "INICIANDO AUDITORIA DE SEGURANÇA E ROTAS" >> $LOG_FILE
+echo "Data/Hora: $(date)" >> $LOG_FILE
+echo "==========================================" >> $LOG_FILE
+
+echo -e "\n[TESTE 1] Tentativas de acesso não autorizado (Esperado: Status 401)" >> $LOG_FILE
+for i in {1..3}
+do
+    echo "Tentativa $i (Sem chave):" >> $LOG_FILE
+    curl -s -i $URL/api/v1/motoristas | grep "HTTP/" >> $LOG_FILE
+done
+
+echo -e "\n[TESTE 2] Falha na validação de CNH (Esperado: Status 400)" >> $LOG_FILE
+curl -s -i -X POST $URL/api/v1/motoristas \
+  -H "X-API-KEY: $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"nome":"Teste Falha CNH","cnh":"12345","categoria":"B"}' | grep "HTTP/" >> $LOG_FILE
+
+echo -e "\n[TESTE 3] Rota inexistente (Esperado: Status 404)" >> $LOG_FILE
+curl -s -i $URL/api/v1/clientes | grep "HTTP/" >> $LOG_FILE
+
+echo -e "\n[TESTE 4] Acesso e Cadastro com chave válida (Esperado: Status 200/201)" >> $LOG_FILE
+echo "GET /motoristas:" >> $LOG_FILE
+curl -s -i -H "X-API-KEY: $KEY" $URL/api/v1/motoristas | grep "HTTP/" >> $LOG_FILE
+
+echo "POST /motoristas (Válido):" >> $LOG_FILE
+curl -s -i -X POST $URL/api/v1/motoristas \
+  -H "X-API-KEY: $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"nome":"Roberto Souza","cnh":"55544433322","categoria":"E"}' | grep "HTTP/" >> $LOG_FILE
+
+echo -e "\n==========================================" >> $LOG_FILE
+echo "AUDITORIA CONCLUÍDA" >> $LOG_FILE
+echo "==========================================" >> $LOG_FILE
+
+```
+
+**Comandos de Execução:**
+
+```bash
+chmod +x teste_seguranca.sh
+./teste_seguranca.sh
+cat audit_seguranca.log
+
+```
+
+---
+
+#### Exercício 08: Localização e Encerramento do Processo do Servidor
+
+```bash
+# 1. Localizar o PID do Node em execução
+ps aux | grep node
+
+# 2. Encerrar o processo (substitua <PID> pelo número encontrado)
+kill -9 <PID>
+
+```
+
+---
+
+### Parte B: Resumo das Atividades da Prova Prática (Desafios 1 ao 6)
+
+1. **Desafio 1 (2,5 Pts):** Estrutura `routes/` e `middlewares/`, `app.js` rodando na porta **3025** com CORS e endpoint público `GET /api/v1/health`.
+2. **Desafio 2 (2,5 Pts):** `middlewares/logger.js` (log com tempo em ms) e `middlewares/auth.js` (retorna 401 para `X-API-KEY` inválida/ausente).
+3. **Desafio 3 (2,5 Pts):** Roteadores `routes/motoristas.js` e `routes/manutencoes.js` montados sob `/api/v1/` e protegidos por autenticação.
+4. **Desafio 4 (2,5 Pts):** `middlewares/validaCnh.js` validando 11 números no POST de motoristas (retorna 400 em caso de erro).
+5. **Desafio 5 (2,0 Pts):** Script `teste_seguranca.sh` apontando para a porta **3025** e gerando `audit_seguranca.log`.
+6. **Desafio 6 (3,0 Pts):** Finalização do processo via `kill -9 <PID>`, capturas de tela e push para o GitHub.
+
+RESOLUÇÃO DETALHADA DA PROVA PRÁTICA (DESAFIOS 1 AO 6)
+DESAFIO 1: Estrutura Modular e Rota de Health Check (2,5 Pontos)
+Objetivo: Criar a estrutura física de diretórios e o servidor principal rodando na porta 3025 com suporte a CORS e rota de verificação de status.
+
+Passo 1.1: Comandos no Terminal (Criação de Pastas e Projeto)
+Bash
+# Navegar até o diretório do curso
+cd ~/binario_tech
+
+# Criar a pasta da prova e as subpastas modularizadas
+mkdir -p prova_aula05/routes prova_aula05/middlewares
+
+# Entrar na pasta do projeto
+cd prova_aula05
+
+# Copiar o arquivo de enunciado enviado pelo professor (se necessário)
+cp /var/prova_aula05.txt ~/binario_tech/prova_aula05/
+
+# Inicializar o Node.js e instalar dependências
+npm init -y
+npm install express cors
+DESAFIO 2: Middlewares Globais de Logging e Autenticação (2,5 Pontos)
+Objetivo: Criar os middlewares de registro de requisições (logger.js) e segurança (auth.js).
+
+Passo 2.1: Criar o arquivo middlewares/logger.js
+Este middleware calcula o tempo total em milissegundos (ms) que o servidor levou para responder e exibe no terminal:
+
+JavaScript
+const loggerMiddleware = (req, res, next) => {
+    const inicio = Date.now();
+    const timestamp = new Date().toISOString();
+
+    // Evento disparado no encerramento da resposta
+    res.on('finish', () => {
+        const duracao = Date.now() - inicio;
+        console.log(`[LOG ${timestamp}] ${req.method} ${req.originalUrl} - Status: ${res.statusCode} (${duracao}ms)`);
+    });
+
+    next();
+};
+
+module.exports = loggerMiddleware;
+Passo 2.2: Criar o arquivo middlewares/auth.js
+Este middleware valida se o cabeçalho X-API-KEY contém a chave "binario-tech-secret-2026". Se ausente ou incorreto, corta a requisição com HTTP 401:
+
+JavaScript
+function authMiddleware(req, res, next) {
+    const apiKey = req.headers['x-api-key'];
+    const CHAVE_VALIDA = "binario-tech-secret-2026";
+
+    if (!apiKey || apiKey !== CHAVE_VALIDA) {
+        return res.status(401).json({
+            erro: "Acesso nao autorizado. Header 'X-API-KEY' invalido ou ausente."
+        });
+    }
+
+    next();
+}
+
+module.exports = authMiddleware;
+DESAFIO 3: Rotas Modularizadas com Express Router (2,5 Pontos)
+Objetivo: Criar os módulos de rotas independentes para motoristas e manutenções.
+
+Passo 3.1: Criar o arquivo routes/motoristas.js
+JavaScript
+const express = require('express');
+const router = express.Router();
+
+let motoristas = [
+    { id: 1, nome: "Carlos Silva", cnh: "12345678900", categoria: "E", ativo: true },
+    { id: 2, nome: "Ana Pereira", cnh: "98765432100", categoria: "D", ativo: true }
+];
+
+// GET /api/v1/motoristas (Listagem)
+router.get('/', (req, res) => {
+    res.status(200).json(motoristas);
+});
+
+// POST /api/v1/motoristas (Cadastro)
+router.post('/', (req, res) => {
+    const { nome, cnh, categoria } = req.body;
+
+    if (!nome || !cnh || !categoria) {
+        return res.status(400).json({ 
+            erro: "Campos 'nome', 'cnh' e 'categoria' sao obrigatorios." 
+        });
+    }
+
+    const novoMotorista = {
+        id: motoristas.length + 1,
+        nome,
+        cnh,
+        categoria,
+        ativo: true
+    };
+
+    motoristas.push(novoMotorista);
+    res.status(201).json(novoMotorista);
+});
+
+module.exports = router;
+Passo 3.2: Criar o arquivo routes/manutencoes.js
+JavaScript
+const express = require('express');
+const router = express.Router();
+
+let manutencoes = [
+    { id: 1, veiculo: "Caminhão Volvo FH 540", descricao: "Troca de óleo e filtros", valor: 1500.00, status: "Concluído" },
+    { id: 2, veiculo: "Scania R450", descricao: "Substituição de pastilhas de freio", valor: 2800.00, status: "Pendente" }
+];
+
+// GET /api/v1/manutencoes
+router.get('/', (req, res) => {
+    res.status(200).json(manutencoes);
+});
+
+// POST /api/v1/manutencoes
+router.post('/', (req, res) => {
+    const { veiculo, descricao, valor, status } = req.body;
+
+    if (!veiculo || !descricao || !valor) {
+        return res.status(400).json({ 
+            erro: "Campos 'veiculo', 'descricao' e 'valor' sao obrigatorios." 
+        });
+    }
+
+    const novaManutencao = {
+        id: manutencoes.length + 1,
+        veiculo,
+        descricao,
+        valor: Number(valor),
+        status: status || "Pendente"
+    };
+
+    manutencoes.push(novaManutencao);
+    res.status(201).json(novaManutencao);
+});
+
+module.exports = router;
+DESAFIO 4: Middleware Customizado de Validação de CNH (2,5 Pontos)
+Objetivo: Criar a trava de validação que exige exatamente 11 dígitos numéricos no campo CNH.
+
+Passo 4.1: Criar o arquivo middlewares/validaCnh.js
+JavaScript
+function validaCnhMiddleware(req, res, next) {
+    const { cnh } = req.body;
+
+    // Expressão regular que checa se há exatamente 11 números de 0 a 9
+    const cnhValida = /^\d{11}$/.test(cnh);
+
+    if (!cnh || !cnhValida) {
+        return res.status(400).json({
+            erro: "Validação falhou. O campo 'cnh' deve conter exatamente 11 dígitos numéricos."
+        });
+    }
+
+    next();
+}
+
+module.exports = validaCnhMiddleware;
+Passo 4.2: Criar o arquivo principal app.js (Integrando Desafios 1, 2, 3 e 4)
+Crie o arquivo app.js configurado especificamente para a porta 3025:
+
+JavaScript
+const express = require('express');
+const cors = require('cors');
+
+// Importando Middlewares Customizados
+const loggerMiddleware = require('./middlewares/logger');
+const authMiddleware = require('./middlewares/auth');
+const validaCnhMiddleware = require('./middlewares/validaCnh');
+
+// Importando Rotas Modularizadas
+const motoristasRouter = require('./routes/motoristas');
+const manutencoesRouter = require('./routes/manutencoes');
+
+const app = express();
+const PORT = 3025; // Porta definida: 3025
+
+// 1. Middlewares Globais
+app.use(cors());
+app.use(express.json());
+app.use(loggerMiddleware);
+
+// 2. Rota Pública de Health Check
+app.get('/api/v1/health', (req, res) => {
+    res.status(200).json({ status: "ONLINE", aplicacao: "Binario Tech API v2" });
+});
+
+// 3. Rotas Protegidas por Autenticação (X-API-KEY)
+// A rota POST de motoristas passa de forma exclusiva pelo validaCnhMiddleware
+app.post('/api/v1/motoristas', authMiddleware, validaCnhMiddleware);
+app.use('/api/v1/motoristas', authMiddleware, motoristasRouter);
+
+app.use('/api/v1/manutencoes', authMiddleware, manutencoesRouter);
+
+// 4. Middleware Global para Tratamento de Rotas Não Encontradas (HTTP 404)
+app.use((req, res) => {
+    res.status(404).json({ erro: "Endpoint nao encontrado no servidor Binario Tech." });
+});
+
+// 5. Inicialização do Servidor
+app.listen(PORT, () => {
+    console.log(`[Binario Tech] Servidor ativo na porta ${PORT}`);
+});
+DESAFIO 5: Script Bash de Testes e Log de Auditoria (2,0 Pontos)
+Objetivo: Criar um script automatizado que testa os códigos HTTP 401, 400, 404, 200 e 201 na porta 3025 e redireciona os logs para audit_seguranca.log.
+
+Passo 5.1: Criar o arquivo teste_seguranca.sh
+Bash
+#!/bin/bash
+
+# Definição de Variáveis
+LOG_FILE="audit_seguranca.log"
+URL="http://localhost:3025"
+KEY="binario-tech-secret-2026"
+
+echo "==========================================" > $LOG_FILE
+echo "INICIANDO AUDITORIA DE SEGURANÇA E ROTAS" >> $LOG_FILE
+echo "Data/Hora: $(date)" >> $LOG_FILE
+echo "==========================================" >> $LOG_FILE
+
+# TESTE 1: Acesso não autorizado sem chave
+echo -e "\n[TESTE 1] Tentativas de acesso não autorizado (Esperado: Status 401)" >> $LOG_FILE
+for i in {1..3}
+do
+    echo "Tentativa $i (Sem chave):" >> $LOG_FILE
+    curl -s -i $URL/api/v1/motoristas | grep "HTTP/" >> $LOG_FILE
+done
+
+# TESTE 2: Falha na validação da CNH
+echo -e "\n[TESTE 2] Falha na validação de CNH (Esperado: Status 400)" >> $LOG_FILE
+curl -s -i -X POST $URL/api/v1/motoristas \
+  -H "X-API-KEY: $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"nome":"Teste Falha CNH","cnh":"12345","categoria":"B"}' | grep "HTTP/" >> $LOG_FILE
+
+# TESTE 3: Chamada em rota inexistente
+echo -e "\n[TESTE 3] Rota inexistente (Esperado: Status 404)" >> $LOG_FILE
+curl -s -i $URL/api/v1/clientes | grep "HTTP/" >> $LOG_FILE
+
+# TESTE 4: Consultas e Cadastros com chave válida
+echo -e "\n[TESTE 4] Acesso e Cadastro com chave válida (Esperado: Status 200/201)" >> $LOG_FILE
+echo "GET /motoristas:" >> $LOG_FILE
+curl -s -i -H "X-API-KEY: $KEY" $URL/api/v1/motoristas | grep "HTTP/" >> $LOG_FILE
+
+echo "POST /motoristas (Válido):" >> $LOG_FILE
+curl -s -i -X POST $URL/api/v1/motoristas \
+  -H "X-API-KEY: $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"nome":"Roberto Souza","cnh":"55544433322","categoria":"E"}' | grep "HTTP/" >> $LOG_FILE
+
+echo -e "\n==========================================" >> $LOG_FILE
+echo "AUDITORIA CONCLUÍDA COM SUCESSO" >> $LOG_FILE
+echo "==========================================" >> $LOG_FILE
+Passo 5.2: Dar Permissão e Executar o Script
+No terminal, digite:
+
+Bash
+# Iniciar o servidor em segundo plano (background) para poder rodar o teste
+node app.js &
+
+# Dar permissão de execução ao script
+chmod +x teste_seguranca.sh
+
+# Executar o script
+./teste_seguranca.sh
+
+# Conferir o log gerado
+cat audit_seguranca.log
+DESAFIO 6: Versionamento Git, Encerramento de Processos e Envio (3,0 Pontos)
+Objetivo: Finalizar a execução da aplicação no Linux via PID, dar o commit do código e publicar no GitHub.
+
+Passo 6.1: Localizar e Matar o Processo do Node
+Bash
+# 1. Listar os processos para encontrar o PID do 'node app.js'
+ps aux | grep node
+
+# Exemplo de saída no terminal:
+# usuario   42150  0.4  1.1 554320 45120 pts/0    S+   13:00   0:00 node app.js
+
+# 2. Encerrar o processo usando o PID retornado (substitua o 42150 pelo número real exibido na sua tela)
+kill -9 42150
+Passo 6.2: Versionamento no Git e Git Push
+Bash
+# Inicializar o repositório se ainda não foi feito
+git init
+
+# Adicionar todos os arquivos
+git add .
+
+# Criar o commit
+git commit -m "Entrega Prova Pratica 3 - Porta 3025"
+
+# Garantir a branch main
+git branch -M main
+
+# Conectar com o repositório do GitHub (Substitua pela sua URL)
+git remote add origin https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git
+
+# Enviar as alterações para o GitHub
+git push -u origin main
+
+-------------------------------------------------------------------------------------
+
+readme finalizado.
