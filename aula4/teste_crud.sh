@@ -5,7 +5,7 @@ LOG_FILE="crud_result.log"
 echo "=== INÍCIO DOS TESTES CRUD - $(date) ===" > "$LOG_FILE"
 echo "" >> "$LOG_FILE"
 
-API_URL="http://localhost:3000/api/v1/veiculos"
+API_URL="http://localhost:3025/api/v1/veiculos"
 
 echo "1. Cadastrando o primeiro veículo..." | tee -a "$LOG_FILE"
 curl -s -i -X POST "$API_URL" \
